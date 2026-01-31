@@ -188,7 +188,11 @@ func (c *Coordinator) server() {
 func (c *Coordinator) Done() bool {
 
 	// Your code here.
-	return c.completedMapTasks == c.totalFiles && c.completedReduceTasks == c.nReduce
+	isDone := c.completedMapTasks == c.totalFiles && c.completedReduceTasks == c.nReduce
+	DPrintf("Completed map tasks %d ; total files %d\n", c.completedMapTasks, c.totalFiles)
+	DPrintf("Completed reduce tasks %d ; total reduce %d\n", c.completedReduceTasks, c.nReduce)
+	DPrintf("Is Program done? %t...\n", isDone)
+	return isDone
 
 }
 
@@ -201,6 +205,7 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	// Your code here.
 	// Create a list of Map tasks using the files to register as Idle tasks
 	c.mapTasks = make(map[int]*Task)
+	c.totalFiles = len(files)
 
 	// Create all the map tasks
 	for i, file := range files {
