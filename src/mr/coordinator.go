@@ -67,7 +67,7 @@ func (c *Coordinator) AssignTask(args *TaskRequest, reply *TaskReply) error {
 	// Assign idle or timed out tasks
 	for taskID, task := range c.mapTasks {
 		isIdleTask := task.status == Idle
-		isTimedOutTask := time.Since(task.timeAssigned) > WORKER_TIMEOUT_IN_SEC*time.Second
+		isTimedOutTask := time.Since(task.timeAssigned) > WORKER_TIMEOUT_IN_SEC*time.Second && task.status == InProgress
 
 		if isTimedOutTask {
 			DPrintf("Task timed out!! Reassigning...\n")
@@ -76,6 +76,7 @@ func (c *Coordinator) AssignTask(args *TaskRequest, reply *TaskReply) error {
 		if isIdleTask || isTimedOutTask {
 			// Denote the map task to be in progress to prevent race condition
 			c.mapTasks[taskID].status = InProgress
+			c.mapTasks[taskID].timeAssigned = time.Now()
 
 			// Generate RPC response
 			reply.TaskID = taskID
@@ -103,9 +104,17 @@ func (c *Coordinator) AssignTask(args *TaskRequest, reply *TaskReply) error {
 
 	// If all maps are done, then we can assign reduce tasks
 	for taskID, task := range c.reduceTasks {
-		if task.status == Idle {
+		isIdleTask := task.status == Idle
+		isTimedOutTask := time.Since(task.timeAssigned) > WORKER_TIMEOUT_IN_SEC*time.Second && task.status == InProgress
+
+		if isTimedOutTask {
+			DPrintf("Task timed out!! Reassigning...\n")
+		}
+
+		if isIdleTask || isTimedOutTask {
 			// Denote the map task to be in progress to prevent race condition
 			c.reduceTasks[taskID].status = InProgress
+			c.reduceTasks[taskID].timeAssigned = time.Now()
 
 			// Generate RPC response
 			reply.TaskID = taskID
@@ -162,8 +171,9 @@ func (c *Coordinator) ReportTaskStatus(req *ReportTaskRequest, reply *ReportTask
 
 	// Only update the status if it is a Map / Reduce task
 	if hashmap != nil {
-		hashmap[req.TaskID].status = req.Status
-		if req.Status == Completed {
+		// Only count towards completion if transitioning from in progress to completion
+		// This prevents slow workers that are still working on an already completed task to issue an increase in completion count
+		if req.Status == Completed && hashmap[req.TaskID].status == InProgress {
 			if req.TaskType == Map {
 				c.completedMapTasks += 1
 				DPrintf("Map task %d completed. Total: %d\n",
@@ -174,6 +184,7 @@ func (c *Coordinator) ReportTaskStatus(req *ReportTaskRequest, reply *ReportTask
 				DPrintf("reduce task %d completed. Total: %d\n",
 					req.TaskID, c.completedReduceTasks)
 			}
+			hashmap[req.TaskID].status = Completed
 		}
 
 	}
@@ -201,8 +212,8 @@ func (c *Coordinator) Done() bool {
 
 	// Your code here.
 	isDone := c.completedMapTasks == c.totalFiles && c.completedReduceTasks == c.nReduce
-	DPrintf("Completed map tasks %d ; total files %d\n", c.completedMapTasks, c.totalFiles)
-	DPrintf("Completed reduce tasks %d ; total reduce %d\n", c.completedReduceTasks, c.nReduce)
+	// DPrintf("Completed map tasks %d ; total files %d\n", c.completedMapTasks, c.totalFiles)
+	// DPrintf("Completed reduce tasks %d ; total reduce %d\n", c.completedReduceTasks, c.nReduce)
 	DPrintf("Is Program done? %t...\n", isDone)
 	return isDone
 
