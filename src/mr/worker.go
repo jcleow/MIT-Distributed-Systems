@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/rpc"
 	"os"
+	"path/filepath"
 	"sort"
 	"time"
 )
@@ -37,7 +38,6 @@ func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
 
 	// Your worker implementation here.
-	var mrFiles []string
 
 	// uncomment to send the Example RPC to the coordinator.
 	CallExample()
@@ -47,17 +47,20 @@ func Worker(mapf func(string, string) []KeyValue,
 		switch reply.TaskType {
 		case Map:
 			// implement map
-			mrFiles = MapFile(reply.File, reply.NReduce, reply.TaskID, mapf)
+			MapFile(reply.File, reply.NReduce, reply.TaskID, mapf)
+			reportTaskReq := ReportTaskRequest{reply.TaskID, reply.TaskType, Completed}
+			ReportTaskStatus(&reportTaskReq)
 		case Reduce:
-			ReduceFiles(mrFiles, reply.TaskID, reply.ReduceBucket, reducef)
+			ReduceFiles(reply.TaskID, reducef)
+			reportTaskReq := ReportTaskRequest{reply.TaskID, reply.TaskType, Completed}
+			ReportTaskStatus(&reportTaskReq)
 		case Wait:
 			time.Sleep(time.Second)
+			fmt.Printf("Worker is waiting...\n")
 		case Done:
+			fmt.Printf("Worker is exiting...\n")
 			return
 		}
-
-		reportTaskReq := ReportTaskRequest{reply.TaskID, reply.TaskType, Completed}
-		ReportTask(&reportTaskReq)
 
 	}
 
@@ -107,12 +110,12 @@ func RequestTask() TaskReply {
 	return reply
 }
 
-func ReportTask(req *ReportTaskRequest) error {
+func ReportTaskStatus(req *ReportTaskRequest) error {
 	reply := ReportTaskResponse{}
 
 	ok := call("Coordinator.ReportTaskStatus", req, &reply)
 	if !ok {
-		log.Fatalf("Failed to call ReportTask")
+		log.Fatalf("Failed to call ReportTaskStatus")
 	}
 
 	return nil
@@ -122,9 +125,8 @@ func ReportTask(req *ReportTaskRequest) error {
 func reduce(
 	intermediate []KeyValue,
 	taskID int,
-	reduceBucket int,
 	reducef func(string, []string) string) string {
-	tmpFile, _ := os.CreateTemp("", fmt.Sprintf("mr-%d-%d", taskID, reduceBucket))
+	tmpFile, _ := os.CreateTemp("", fmt.Sprintf("temp-mr-out-%d", taskID))
 	i := 0
 	for i < len(intermediate) {
 		j := i + 1
@@ -145,17 +147,24 @@ func reduce(
 		i = j
 	}
 
-	reducedFileName := fmt.Sprintf("mr-%d-%d", taskID, reduceBucket)
+	reducedFileName := fmt.Sprintf("mr-out-%d", taskID)
 	os.Rename(tmpFile.Name(), reducedFileName)
 
 	return reducedFileName
 }
 
-func ReduceFiles(filenames []string, taskID int, reduceBucket int, reducef func(string, []string) string) string {
+func ReduceFiles(taskID int, reducef func(string, []string) string) error {
 
 	intermediate := []KeyValue{}
 	// Createing the intermediate files for the range of filenames provided
+	intermediateFiles := fmt.Sprintf("mr-*-%d", taskID)
+	filenames, err := filepath.Glob(intermediateFiles)
+	if err != nil {
+		log.Fatalf("Unable to get all global files\n")
+	}
+
 	for _, filename := range filenames {
+		fmt.Printf("filename %s to reduce\n", filename)
 		file, err := os.Open(filename)
 		if err != nil {
 			log.Fatalf("Cannot open file %s", filename)
@@ -170,14 +179,18 @@ func ReduceFiles(filenames []string, taskID int, reduceBucket int, reducef func(
 			intermediate = append(intermediate, kv)
 		}
 	}
-	sort.Sort(ByKey(intermediate))
-	// Perform reduce on each distinct key in intermediate
 
-	return reduce(intermediate, taskID, reduceBucket, reducef)
+	sort.Sort(ByKey(intermediate))
+
+	// Perform reduce on each distinct key in intermediate
+	reduce(intermediate, taskID, reducef)
+
+	return nil
 
 }
 
-func MapFile(filename string, nReduce int, taskID int, mapf func(string, string) []KeyValue) []string {
+// Map a single file
+func MapFile(filename string, nReduce int, taskID int, mapf func(string, string) []KeyValue) error {
 	/*
 		The worker's map task code will need a way to
 		store intermediate key/value pairs in files in a way that
@@ -203,7 +216,7 @@ func MapFile(filename string, nReduce int, taskID int, mapf func(string, string)
 	*/
 	file, err := os.Open(filename)
 	if err != nil {
-		log.Fatalf("cannot open %v", filename)
+		log.Fatalf("cannot open file: %s", filename)
 	}
 	content, err := io.ReadAll(file)
 	if err != nil {
@@ -241,11 +254,7 @@ func MapFile(filename string, nReduce int, taskID int, mapf func(string, string)
 		mrFiles = append(mrFiles, mrFileName)
 	}
 
-	// when a map task completes,
-	// worker sends message to master and includes names of the
-	// R temporary files in the message
-
-	return mrFiles
+	return nil
 
 }
 

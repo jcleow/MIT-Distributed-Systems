@@ -29,11 +29,10 @@ type TaskRequest struct {
 }
 
 type TaskReply struct {
-	File         string
-	TaskID       int
-	TaskType     TaskType
-	NReduce      int
-	ReduceBucket int
+	File     string
+	TaskID   int // Synonymous to the Reduce Bucket for reduce tasks
+	TaskType TaskType
+	NReduce  int
 }
 
 type ReportTaskRequest struct {

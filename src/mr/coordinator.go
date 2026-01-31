@@ -14,7 +14,7 @@ type TaskStatus int
 
 const (
 	Idle TaskStatus = iota + 1
-	Inprogress
+	InProgress
 	Completed
 )
 
@@ -28,19 +28,21 @@ const (
 )
 
 type Task struct {
-	id           int
-	file         string
-	status       TaskStatus
-	taskType     TaskType
-	reduceBucket *int
+	id       int
+	file     string
+	status   TaskStatus
+	taskType TaskType
 }
 
 type Coordinator struct {
 	// Your definitions here.
-	mu          sync.Mutex
-	mapTasks    map[int]*Task
-	reduceTasks map[int]*Task
-	nReduce     int
+	mu                   sync.Mutex
+	mapTasks             map[int]*Task
+	reduceTasks          map[int]*Task
+	nReduce              int
+	completedMapTasks    int
+	completedReduceTasks int
+	totalFiles           int
 }
 
 // Your code here -- RPC handlers for the worker to call.
@@ -59,63 +61,76 @@ func (c *Coordinator) AssignTask(args *TaskRequest, reply *TaskReply) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	completedMapTasks := 0
 	// Assign only idle tasks
 	for taskID, task := range c.mapTasks {
 		if task.status == Idle {
+			// Denote the map task to be in progress to prevent race condition
+			c.mapTasks[taskID].status = InProgress
+
 			// Generate RPC response
 			reply.TaskID = taskID
 			reply.TaskType = task.taskType
 			reply.File = task.file
 			reply.NReduce = c.nReduce
+			fmt.Printf("Sending out map task - ID: %d\n", taskID)
 
 			return nil
 
 		}
 
-		if task.status == Completed {
-			completedMapTasks += 1
-		}
 	}
 
 	// If maps are assigned but not all are done -> wait
-	if completedMapTasks != len(c.mapTasks) {
+	if c.completedMapTasks != len(c.mapTasks) {
 		reply.TaskType = Wait
+		fmt.Printf(
+			"Maps are assigned but not all are done - completed: %d, total:%d\n",
+			c.completedMapTasks,
+			len(c.mapTasks),
+		)
 		return nil
 	}
 
-	completedReduceTasks := 0
 	// If all maps are done, then we can assign reduce tasks
 	for taskID, task := range c.reduceTasks {
 		if task.status == Idle {
+			// Denote the map task to be in progress to prevent race condition
+			c.reduceTasks[taskID].status = InProgress
+
 			// Generate RPC response
 			reply.TaskID = taskID
 			reply.TaskType = task.taskType
 			reply.File = task.file
 			reply.NReduce = c.nReduce
-
+			fmt.Printf("Sending out reduce tasks \n")
 			return nil
-		}
-
-		if task.status == Completed {
-			completedReduceTasks += 1
 		}
 
 	}
 
 	// If all maps are done and reduce tasks are still on going workers have to wait
 	// If maps are assigned but not all are done -> wait
-	if completedReduceTasks != len(c.mapTasks) {
+	if c.completedReduceTasks != len(c.reduceTasks) {
 		reply.TaskType = Wait
+		fmt.Printf("Not all reduce tasks are completed yet\n Total Tasks %d: Tasks Completed %d\n",
+			len(c.mapTasks), c.completedReduceTasks)
 		return nil
 	}
 
-	// TODO: implement the returning of Done
+	fmt.Printf("Sending out done!\n")
+	reply.TaskType = Done
 
 	return nil
 }
 
+/*
+RPC for workers to report the status of their tasks
+*/
 func (c *Coordinator) ReportTaskStatus(req *ReportTaskRequest, reply *ReportTaskResponse) error {
+	// lock up critical section
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	var hashmap map[int]*Task
 
 	switch req.TaskType {
@@ -123,15 +138,34 @@ func (c *Coordinator) ReportTaskStatus(req *ReportTaskRequest, reply *ReportTask
 		hashmap = c.mapTasks
 	case Reduce:
 		hashmap = c.reduceTasks
+	case Wait:
+	case Done:
 	default:
 		break
 	}
+
 	fmt.Printf(
 		"Report Task Status: %d, Task ID: %d , Task Type:%d \n",
 		req.Status, req.TaskID, req.TaskType,
 	)
 
-	hashmap[req.TaskID].status = req.Status
+	// Only update the status if it is a Map / Reduce task
+	if hashmap != nil {
+		hashmap[req.TaskID].status = req.Status
+		if req.Status == Completed {
+			if req.TaskType == Map {
+				c.completedMapTasks += 1
+				fmt.Printf("Map task %d completed. Total: %d\n",
+					req.TaskID, c.completedMapTasks)
+			}
+			if req.TaskType == Reduce {
+				c.completedReduceTasks += 1
+				fmt.Printf("reduce task %d completed. Total: %d\n",
+					req.TaskID, c.completedReduceTasks)
+			}
+		}
+
+	}
 
 	return nil
 }
@@ -153,11 +187,10 @@ func (c *Coordinator) server() {
 // main/mrcoordinator.go calls Done() periodically to find out
 // if the entire job has finished.
 func (c *Coordinator) Done() bool {
-	ret := false
 
 	// Your code here.
+	return c.completedMapTasks == c.totalFiles && c.completedReduceTasks == c.nReduce
 
-	return ret
 }
 
 // create a Coordinator.
@@ -169,9 +202,8 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	// Your code here.
 	// Create a list of Map tasks using the files to register as Idle tasks
 	c.mapTasks = make(map[int]*Task)
-	c.reduceTasks = make(map[int]*Task)
-	c.nReduce = nReduce
 
+	// Create all the map tasks
 	for i, file := range files {
 		c.mapTasks[i] = &Task{
 			id:       i,
@@ -179,8 +211,20 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 			status:   Idle,
 			taskType: Map,
 		}
+	}
+
+	// Create all the reduce tasks
+	c.nReduce = nReduce
+	c.reduceTasks = make(map[int]*Task)
+	for i := 0; i < nReduce; i++ {
+		c.reduceTasks[i] = &Task{
+			id:       i, // this will be the reduce bucket that worker works on
+			status:   Idle,
+			taskType: Reduce,
+		}
 
 	}
+
 	c.server()
 	return &c
 }
