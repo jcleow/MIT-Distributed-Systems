@@ -1,6 +1,7 @@
 package mr
 
 import (
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -15,6 +16,15 @@ const (
 	Idle TaskStatus = iota + 1
 	Inprogress
 	Completed
+)
+
+type TaskType int
+
+const (
+	Map TaskType = iota
+	Reduce
+	Wait
+	Done
 )
 
 type Task struct {
@@ -32,15 +42,6 @@ type Coordinator struct {
 	reduceTasks map[int]*Task
 	nReduce     int
 }
-
-type TaskType int
-
-const (
-	Map = iota + 1
-	Reduce
-	Wait
-	Done
-)
 
 // Your code here -- RPC handlers for the worker to call.
 
@@ -67,6 +68,9 @@ func (c *Coordinator) AssignTask(args *TaskRequest, reply *TaskReply) error {
 			reply.TaskType = task.taskType
 			reply.File = &task.file
 			reply.NReduce = &c.nReduce
+
+			return nil
+
 		}
 		if task.status == Completed {
 			completedMapTasks += 1
@@ -76,6 +80,7 @@ func (c *Coordinator) AssignTask(args *TaskRequest, reply *TaskReply) error {
 	// If maps are assigned but not all are done -> wait
 	if completedMapTasks != len(c.mapTasks) {
 		reply.TaskType = Wait
+		return nil
 	}
 
 	completedReduceTasks := 0
@@ -87,6 +92,8 @@ func (c *Coordinator) AssignTask(args *TaskRequest, reply *TaskReply) error {
 			reply.TaskType = task.taskType
 			reply.File = &task.file
 			reply.NReduce = &c.nReduce
+
+			return nil
 		}
 
 		if task.status == Completed {
@@ -99,6 +106,7 @@ func (c *Coordinator) AssignTask(args *TaskRequest, reply *TaskReply) error {
 	// If maps are assigned but not all are done -> wait
 	if completedReduceTasks != len(c.mapTasks) {
 		reply.TaskType = Wait
+		return nil
 	}
 
 	// TODO: implement the returning of Done
@@ -114,7 +122,13 @@ func (c *Coordinator) ReportTaskStatus(req *ReportTaskRequest, reply *ReportTask
 		hashmap = c.mapTasks
 	case Reduce:
 		hashmap = c.reduceTasks
+	default:
+		break
 	}
+	fmt.Printf(
+		"Report Task Status: %d, Task ID: %d , Task Type:%d \n",
+		req.Status, req.TaskID, req.TaskType,
+	)
 
 	hashmap[req.TaskID].status = req.Status
 
@@ -153,6 +167,10 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 
 	// Your code here.
 	// Create a list of Map tasks using the files to register as Idle tasks
+	c.mapTasks = make(map[int]*Task)
+	c.reduceTasks = make(map[int]*Task)
+	c.nReduce = nReduce
+
 	for i, file := range files {
 		c.mapTasks[i] = &Task{
 			id:       i,

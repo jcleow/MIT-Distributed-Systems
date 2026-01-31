@@ -102,13 +102,15 @@ func RequestTask() TaskReply {
 		fmt.Printf("Error")
 	}
 
+	fmt.Printf("Reply : %+v\n", reply)
+
 	return reply
 }
 
 func ReportTask(req *ReportTaskRequest) error {
 	reply := ReportTaskResponse{}
 
-	ok := call("Coordinator.ReportTask", req, &reply)
+	ok := call("Coordinator.ReportTaskStatus", req, &reply)
 	if !ok {
 		log.Fatalf("Failed to call ReportTask")
 	}
