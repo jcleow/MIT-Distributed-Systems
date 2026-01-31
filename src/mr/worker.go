@@ -39,9 +39,6 @@ func Worker(mapf func(string, string) []KeyValue,
 
 	// Your worker implementation here.
 
-	// uncomment to send the Example RPC to the coordinator.
-	CallExample()
-
 	for {
 		reply := RequestTask()
 		switch reply.TaskType {
@@ -56,9 +53,9 @@ func Worker(mapf func(string, string) []KeyValue,
 			ReportTaskStatus(&reportTaskReq)
 		case Wait:
 			time.Sleep(time.Second)
-			fmt.Printf("Worker is waiting...\n")
+			DPrintf("Worker is waiting...\n")
 		case Done:
-			fmt.Printf("Worker is exiting...\n")
+			DPrintf("Worker is exiting...\n")
 			return
 		}
 
@@ -87,9 +84,9 @@ func CallExample() {
 	ok := call("Coordinator.Example", &args, &reply)
 	if ok {
 		// reply.Y should be 100.
-		fmt.Printf("reply.Y %v\n", reply.Y)
+		DPrintf("reply.Y %v\n", reply.Y)
 	} else {
-		fmt.Printf("call failed!\n")
+		DPrintf("call failed!\n")
 	}
 }
 
@@ -102,10 +99,10 @@ func RequestTask() TaskReply {
 
 	ok := call("Coordinator.AssignTask", &req, &reply)
 	if !ok {
-		fmt.Printf("Error")
+		DPrintf("Error")
 	}
 
-	fmt.Printf("Reply : %+v\n", reply)
+	DPrintf("Reply : %+v\n", reply)
 
 	return reply
 }
@@ -164,7 +161,7 @@ func ReduceFiles(taskID int, reducef func(string, []string) string) error {
 	}
 
 	for _, filename := range filenames {
-		fmt.Printf("filename %s to reduce\n", filename)
+		DPrintf("filename %s to reduce\n", filename)
 		file, err := os.Open(filename)
 		if err != nil {
 			log.Fatalf("Cannot open file %s", filename)

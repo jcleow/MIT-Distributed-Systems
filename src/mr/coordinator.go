@@ -1,7 +1,6 @@
 package mr
 
 import (
-	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -72,7 +71,7 @@ func (c *Coordinator) AssignTask(args *TaskRequest, reply *TaskReply) error {
 			reply.TaskType = task.taskType
 			reply.File = task.file
 			reply.NReduce = c.nReduce
-			fmt.Printf("Sending out map task - ID: %d\n", taskID)
+			DPrintf("Sending out map task - ID: %d\n", taskID)
 
 			return nil
 
@@ -83,7 +82,7 @@ func (c *Coordinator) AssignTask(args *TaskRequest, reply *TaskReply) error {
 	// If maps are assigned but not all are done -> wait
 	if c.completedMapTasks != len(c.mapTasks) {
 		reply.TaskType = Wait
-		fmt.Printf(
+		DPrintf(
 			"Maps are assigned but not all are done - completed: %d, total:%d\n",
 			c.completedMapTasks,
 			len(c.mapTasks),
@@ -102,7 +101,7 @@ func (c *Coordinator) AssignTask(args *TaskRequest, reply *TaskReply) error {
 			reply.TaskType = task.taskType
 			reply.File = task.file
 			reply.NReduce = c.nReduce
-			fmt.Printf("Sending out reduce tasks \n")
+			DPrintf("Sending out reduce tasks \n")
 			return nil
 		}
 
@@ -112,12 +111,12 @@ func (c *Coordinator) AssignTask(args *TaskRequest, reply *TaskReply) error {
 	// If maps are assigned but not all are done -> wait
 	if c.completedReduceTasks != len(c.reduceTasks) {
 		reply.TaskType = Wait
-		fmt.Printf("Not all reduce tasks are completed yet\n Total Tasks %d: Tasks Completed %d\n",
+		DPrintf("Not all reduce tasks are completed yet\n Total Tasks %d: Tasks Completed %d\n",
 			len(c.mapTasks), c.completedReduceTasks)
 		return nil
 	}
 
-	fmt.Printf("Sending out done!\n")
+	DPrintf("Sending out done!\n")
 	reply.TaskType = Done
 
 	return nil
@@ -144,7 +143,7 @@ func (c *Coordinator) ReportTaskStatus(req *ReportTaskRequest, reply *ReportTask
 		break
 	}
 
-	fmt.Printf(
+	DPrintf(
 		"Report Task Status: %d, Task ID: %d , Task Type:%d \n",
 		req.Status, req.TaskID, req.TaskType,
 	)
@@ -155,12 +154,12 @@ func (c *Coordinator) ReportTaskStatus(req *ReportTaskRequest, reply *ReportTask
 		if req.Status == Completed {
 			if req.TaskType == Map {
 				c.completedMapTasks += 1
-				fmt.Printf("Map task %d completed. Total: %d\n",
+				DPrintf("Map task %d completed. Total: %d\n",
 					req.TaskID, c.completedMapTasks)
 			}
 			if req.TaskType == Reduce {
 				c.completedReduceTasks += 1
-				fmt.Printf("reduce task %d completed. Total: %d\n",
+				DPrintf("reduce task %d completed. Total: %d\n",
 					req.TaskID, c.completedReduceTasks)
 			}
 		}
