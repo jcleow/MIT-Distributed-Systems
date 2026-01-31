@@ -29,11 +29,11 @@ type TaskRequest struct {
 }
 
 type TaskReply struct {
-	File         *string
-	TaskID       *int
+	File         string
+	TaskID       int
 	TaskType     TaskType
-	NReduce      *int
-	ReduceBucket *int
+	NReduce      int
+	ReduceBucket int
 }
 
 type ReportTaskRequest struct {

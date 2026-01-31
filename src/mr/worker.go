@@ -47,16 +47,16 @@ func Worker(mapf func(string, string) []KeyValue,
 		switch reply.TaskType {
 		case Map:
 			// implement map
-			mrFiles = MapFile(*reply.File, *reply.NReduce, *reply.TaskID, mapf)
+			mrFiles = MapFile(reply.File, reply.NReduce, reply.TaskID, mapf)
 		case Reduce:
-			ReduceFiles(mrFiles, *reply.TaskID, reply.ReduceBucket, reducef)
+			ReduceFiles(mrFiles, reply.TaskID, reply.ReduceBucket, reducef)
 		case Wait:
 			time.Sleep(time.Second)
 		case Done:
 			return
 		}
 
-		reportTaskReq := ReportTaskRequest{*reply.TaskID, reply.TaskType, Completed}
+		reportTaskReq := ReportTaskRequest{reply.TaskID, reply.TaskType, Completed}
 		ReportTask(&reportTaskReq)
 
 	}
@@ -122,7 +122,7 @@ func ReportTask(req *ReportTaskRequest) error {
 func reduce(
 	intermediate []KeyValue,
 	taskID int,
-	reduceBucket *int,
+	reduceBucket int,
 	reducef func(string, []string) string) string {
 	tmpFile, _ := os.CreateTemp("", fmt.Sprintf("mr-%d-%d", taskID, reduceBucket))
 	i := 0
@@ -151,7 +151,7 @@ func reduce(
 	return reducedFileName
 }
 
-func ReduceFiles(filenames []string, taskID int, reduceBucket *int, reducef func(string, []string) string) string {
+func ReduceFiles(filenames []string, taskID int, reduceBucket int, reducef func(string, []string) string) string {
 
 	intermediate := []KeyValue{}
 	// Createing the intermediate files for the range of filenames provided

@@ -64,14 +64,15 @@ func (c *Coordinator) AssignTask(args *TaskRequest, reply *TaskReply) error {
 	for taskID, task := range c.mapTasks {
 		if task.status == Idle {
 			// Generate RPC response
-			reply.TaskID = &taskID
+			reply.TaskID = taskID
 			reply.TaskType = task.taskType
-			reply.File = &task.file
-			reply.NReduce = &c.nReduce
+			reply.File = task.file
+			reply.NReduce = c.nReduce
 
 			return nil
 
 		}
+
 		if task.status == Completed {
 			completedMapTasks += 1
 		}
@@ -88,10 +89,10 @@ func (c *Coordinator) AssignTask(args *TaskRequest, reply *TaskReply) error {
 	for taskID, task := range c.reduceTasks {
 		if task.status == Idle {
 			// Generate RPC response
-			reply.TaskID = &taskID
+			reply.TaskID = taskID
 			reply.TaskType = task.taskType
-			reply.File = &task.file
-			reply.NReduce = &c.nReduce
+			reply.File = task.file
+			reply.NReduce = c.nReduce
 
 			return nil
 		}
