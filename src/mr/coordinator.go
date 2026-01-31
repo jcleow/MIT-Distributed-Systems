@@ -7,6 +7,7 @@ import (
 	"net/rpc"
 	"os"
 	"sync"
+	"time"
 )
 
 type TaskStatus int
@@ -27,10 +28,11 @@ const (
 )
 
 type Task struct {
-	id       int
-	file     string
-	status   TaskStatus
-	taskType TaskType
+	id           int
+	file         string
+	status       TaskStatus
+	taskType     TaskType
+	timeAssigned time.Time
 }
 
 type Coordinator struct {
@@ -43,6 +45,8 @@ type Coordinator struct {
 	completedReduceTasks int
 	totalFiles           int
 }
+
+const WORKER_TIMEOUT_IN_SEC = 10
 
 // Your code here -- RPC handlers for the worker to call.
 
@@ -60,9 +64,16 @@ func (c *Coordinator) AssignTask(args *TaskRequest, reply *TaskReply) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// Assign only idle tasks
+	// Assign idle or timed out tasks
 	for taskID, task := range c.mapTasks {
-		if task.status == Idle {
+		isIdleTask := task.status == Idle
+		isTimedOutTask := time.Since(task.timeAssigned) > WORKER_TIMEOUT_IN_SEC*time.Second
+
+		if isTimedOutTask {
+			DPrintf("Task timed out!! Reassigning...\n")
+		}
+
+		if isIdleTask || isTimedOutTask {
 			// Denote the map task to be in progress to prevent race condition
 			c.mapTasks[taskID].status = InProgress
 
@@ -101,6 +112,7 @@ func (c *Coordinator) AssignTask(args *TaskRequest, reply *TaskReply) error {
 			reply.TaskType = task.taskType
 			reply.File = task.file
 			reply.NReduce = c.nReduce
+
 			DPrintf("Sending out reduce tasks \n")
 			return nil
 		}
