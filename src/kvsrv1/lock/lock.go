@@ -47,7 +47,11 @@ func (lk *Lock) Acquire() {
 			if lk.ck.Put(lk.lockKey, lk.id, 0) == rpc.OK {
 				return
 			}
-		} else if val == "" {
+		} else if val == "" || val == lk.id {
+			// Already acquired but previous reply was lost due to unreliable network
+			if val == lk.id {
+				return
+			}
 			if lk.ck.Put(lk.lockKey, lk.id, version) == rpc.OK {
 				return
 			}
@@ -63,7 +67,12 @@ func (lk *Lock) Release() {
 		val, version, err := lk.ck.Get(lk.lockKey)
 		if err == rpc.ErrNoKey {
 			return
-		} else if val == lk.id {
+		} else if val == lk.id || val == "" {
+			// Already released but previous reply was lost due to unreliable network
+			if val == "" {
+				return
+			}
+
 			if lk.ck.Put(lk.lockKey, "", version) == rpc.OK {
 				return
 			}
