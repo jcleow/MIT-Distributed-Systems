@@ -13,6 +13,7 @@ type Lock struct {
 	ck kvtest.IKVClerk
 	// You may add code here
 	lockKey string
+	id      string
 }
 
 // The tester calls MakeLock() and passes in a k/v clerk; your code can
@@ -24,6 +25,8 @@ func MakeLock(ck kvtest.IKVClerk, l string) *Lock {
 	lk := &Lock{ck: ck}
 	// You may add code here
 	lk.lockKey = l
+	// generate random string for each client so we don't unlock another client's lock
+	lk.id = kvtest.RandValue(8)
 	return lk
 }
 
@@ -41,11 +44,11 @@ func (lk *Lock) Acquire() {
 	for {
 		val, version, err := lk.ck.Get(lk.lockKey)
 		if err == rpc.ErrNoKey {
-			if lk.ck.Put(lk.lockKey, "x", 0) == rpc.OK {
+			if lk.ck.Put(lk.lockKey, lk.id, 0) == rpc.OK {
 				return
 			}
 		} else if val == "" {
-			if lk.ck.Put(lk.lockKey, "x", version) == rpc.OK {
+			if lk.ck.Put(lk.lockKey, lk.id, version) == rpc.OK {
 				return
 			}
 		}
@@ -60,7 +63,7 @@ func (lk *Lock) Release() {
 		val, version, err := lk.ck.Get(lk.lockKey)
 		if err == rpc.ErrNoKey {
 			return
-		} else if val == "x" {
+		} else if val == lk.id {
 			if lk.ck.Put(lk.lockKey, "", version) == rpc.OK {
 				return
 			}
