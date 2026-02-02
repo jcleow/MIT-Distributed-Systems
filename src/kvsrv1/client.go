@@ -1,6 +1,8 @@
 package kvsrv
 
 import (
+	"time"
+
 	"6.5840/kvsrv1/rpc"
 	kvtest "6.5840/kvtest1"
 	tester "6.5840/tester1"
@@ -79,21 +81,59 @@ func (ck *Clerk) Put(key, value string, version rpc.Tversion) rpc.Err {
 		ok := ck.clnt.Call(ck.server, "KVServer.Put", &args, &reply)
 		if ok {
 
-			// Put should return ErrVersion since Put was not performed at the server
+			// Put should return ErrVersion since Put was not performed at the server in the first instance
 			if reply.Err == rpc.ErrVersion {
 				if count == 0 {
 					return reply.Err
 				}
+				// but if we retried the PUT and it errored with ErrVersion:
+				// As per the https://pdos.csail.mit.edu/6.824/labs/lab-kvsrv1.html notes:
+				// the first RPC might have been executed by the server
+				// but the network may have discarded the successful response from the server,
+				// so that the server sent rpc.ErrVersion only for the retransmitted RPC.
+
+				// Or, it might be that another Clerk updated the key before the
+				// Clerk's first RPC arrived at the server, so that the server executed neither of the
+				// Clerk's RPCs and replied rpc.ErrVersion to both.
 
 				// Return ErrMaybe to the application since its earlier RPC might have been
 				// processed by the server successfully but the response was lost
 				// and Clerk doesn't know if the Put was performed or not
+
+				/*
+					Scenario 1: "First RPC executed, reply lost"
+
+					  1. Client sends Put("k", "v", 5) — RPC #1
+					  2. Server receives it, executes it, version becomes 6, sends back OK
+					  3. Network drops the reply — client never gets it
+					  4. Client retries Put("k", "v", 5) — RPC #2
+					  5. Server receives it, but version is now 6, not 5 → replies ErrVersion
+
+					  The server sent ErrVersion to RPC #2, not RPC #1. RPC #1 got OK but the client never saw it.
+
+					  Scenario 2: "Another clerk changed it first"
+
+					  1. Client A sends Put("k", "v", 5) — RPC #1
+					  2. Network delays RPC #1
+					  3. Client B sends Put("k", "x", 5) → succeeds, version becomes 6
+					  4. Client A's RPC #1 finally arrives, version is 6 not 5 → server replies ErrVersion
+					  5. Network drops that reply too
+					  6. Client A retries Put("k", "v", 5) — RPC #2
+					  7. Server sees version 6 not 5 → replies ErrVersion
+
+					  Both RPCs got ErrVersion, neither executed.
+				*/
+				// Meaning to say there is a chance that our initial RPC completed successfully or not, but
+				// because the network dropped the RPC, we wouldn't know, hence return ErrMaybe
 				return rpc.ErrMaybe
 			}
 			return reply.Err
 		} else {
 			count += 1
 		}
+
+		// Add sleep before retry
+		time.Sleep(100 * time.Millisecond)
 
 	}
 }
